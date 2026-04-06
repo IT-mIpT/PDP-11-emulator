@@ -21,7 +21,7 @@ word w_read (address adr);
 
 void w_write (address adr, word val);
 
-void load_data ();
+void load_data (char* file_name);
 
 void mem_dump(address adr, int size);
 
@@ -29,7 +29,7 @@ void mem_dump(address adr, int size);
 
 int main()
 {
-    load_data();
+    load_data("data_input.txt");
 
     mem_dump(0x40, 20);
     printf("\n");
@@ -67,22 +67,26 @@ void w_write (address adr, word val)
     mem [adr + 1] = (byte)((val & (0xFF00)) >> 8);
 }
 
-void load_data ()
+void load_data (char* file_name)
 {
-    FILE* fp = stdin;
+    FILE* fp = fopen (file_name, "r");
+    assert (fp != NULL);
 
     unsigned int block_adr;
     unsigned int block_size;
     unsigned int value;
 
-    while (2 == scanf("%x%x", &block_adr, &block_size))
+    while (2 == fscanf(fp, "%x%x", &block_adr, &block_size))
     {
         for (unsigned int counter = 0; counter < block_size; counter++)
         {
-            scanf ("%x", &value);
+            fscanf (fp, "%x", &value);
             b_write(block_adr + counter, value);
         }        
     }
+
+    fclose (fp);
+
 }
 
 void mem_dump(address adr, int size)
@@ -138,8 +142,8 @@ void test_mem ()
 
     w_write (a, w);
 
-    young_res = b_read (a);
-    senjor_res = b_read (a + 1);
+    byte young_res = b_read (a);
+    byte senjor_res = b_read (a + 1);
 
     fprintf (stderr, "a = %06o, young byte = %hhx, res young byte = %hhx\n", a, young_byte, young_res);
     assert (young_byte == young_res);
