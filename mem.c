@@ -132,10 +132,20 @@ void test_mem ()
 
     a = 4;
     w = 0xa2b4;
-    byte yound_byte = 0xb4;   // 0xa4
+    byte young_byte = 0xb4;   // 0xa4
     byte senjor_byte = 0xa2;
 
+
     w_write (a, w);
+
+    young_res = b_read (a);
+    senjor_res = b_read (a + 1);
+
+    fprintf (stderr, "a = %06o, young byte = %hhx, res young byte = %hhx\n", a, young_byte, young_res);
+    assert (young_byte == young_res);
+
+    fprintf (stderr, "a = %06o, senjor byte = %hhx, res senjor byte = %hhx\n", a, senjor_byte, senjor_res);
+    assert (senjor_byte == senjor_res);
 }
 
 
