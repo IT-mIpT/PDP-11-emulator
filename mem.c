@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <assert.h>
+#include <stdlib.h>
 
 typedef unsigned char byte;
 
@@ -10,6 +11,10 @@ typedef unsigned short address;
 #define MEMSIZE (64 * 1024)
 
 byte mem [MEMSIZE];
+
+word reg [8];
+
+#define pc reg [7]
 
 void test_mem ();
 
@@ -25,17 +30,47 @@ void load_data (char* file_name);
 
 void mem_dump(address adr, int size);
 
+void do_halt ();
+
+void do_add ();
+
+void do_mov ();
+
+void do_inc ();
+
+void do_sob ();
+
+void run ();
+
+struct Command
+{
+    unsigned short opcode;
+    unsigned short mask;
+    const char* name;
+    void (*func_ptr)(void);
+};
+
+struct Command commands [] =       {{0060000, 0170000, "ADD\n", do_add}, 
+                                    {0010000, 0170000, "MOV\n", do_mov},
+                                    {0000000, 0177777, "HALT\n", do_halt},
+                                    {0005200, 0177700, "INC\n", do_inc},
+                                    {0077000, 0177000, "SOB\n", do_sob}};
+
 
 
 int main()
 {
-    load_data("data_input.txt");
+    //load_data("data_input.txt");
 
-    mem_dump(0x40, 20);
-    printf("\n");
-    mem_dump(0x200, 0x26);
+    //mem_dump(0x40, 20);
+    //printf("\n");
+    //mem_dump(0x200, 0x26);
 
-    return 0;
+    w_write (01000,0060000);
+
+    run ();
+
+    //return 0;
 }
 
 
@@ -152,7 +187,46 @@ void test_mem ()
     assert (senjor_byte == senjor_res);
 }
 
+void run ()
+{
+    pc = 01000;
 
+    word w;
+
+    while (1)
+    {
+        w = w_read (pc);
+        printf ("%06o : %06o ", pc, w);
+        pc += 2;
+
+        for (int counter = 0; counter < sizeof (commands) / sizeof (struct Command); counter++)
+        {
+            if ((w & (commands [counter]).mask) == (commands [counter]).opcode)
+            {
+                printf ("%s ", commands [counter].name);
+                (commands [counter]).func_ptr ();
+            }
+        }
+        printf("\n");
+        
+    }
+}
+
+void do_halt ()
+{
+    printf ("THE END\n");
+    exit (0);
+}
+
+void do_nothing() {}
+
+void do_add() {}
+
+void do_mov() {}
+
+void do_inc () {}
+
+void do_sob () {}
 
 
 
