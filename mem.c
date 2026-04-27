@@ -42,12 +42,29 @@ void do_sob ();
 
 void run ();
 
+
+struct Argument
+{
+    word val;
+    address adr;
+};
+
+typedef struct Argument Arg;
+
+Arg ss;
+Arg dd;
+
+Arg get_mr (word w);
+
+
+
 struct Command
 {
     unsigned short opcode;
     unsigned short mask;
     const char* name;
     void (*func_ptr)(void);
+    
 };
 
 struct Command commands [] =       {{0060000, 0170000, "ADD\n", do_add}, 
@@ -60,32 +77,37 @@ struct Command commands [] =       {{0060000, 0170000, "ADD\n", do_add},
 
 int main()
 {
-    //load_data("data_input.txt");
-
-    //mem_dump(0x40, 20);
-    //printf("\n");
-    //mem_dump(0x200, 0x26);
-
-    w_write (01000,0060000);
-
+    load_data("data_input.txt");
     run ();
-
-    //return 0;
 }
 
 
 void b_write (address adr, byte val)
 {
+    if (adr <= 7)
+    {
+        reg [adr] = val;
+        return;
+    }
     mem [adr] = val;
 }
 
 byte b_read (address adr)
 {
+    if (adr <= 7)
+    {
+        return reg [adr];
+    }
     return mem [adr];
 }
 
 word w_read (address adr)
 {
+    if (adr <= 7)
+    {
+        return reg [adr];
+    }
+    
     assert (~adr & 1);
 
     word w = 0;
@@ -98,6 +120,11 @@ word w_read (address adr)
 
 void w_write (address adr, word val)
 {
+    if (adr <= 7)
+    {
+        reg [adr] = val;
+    }
+
     mem [adr] = (byte)(val & (0x00FF));
     mem [adr + 1] = (byte)((val & (0xFF00)) >> 8);
 }
@@ -107,9 +134,9 @@ void load_data (char* file_name)
     FILE* fp = fopen (file_name, "r");
     assert (fp != NULL);
 
-    unsigned int block_adr;
-    unsigned int block_size;
-    unsigned int value;
+    unsigned int block_adr = 0;
+    unsigned int block_size = 0;
+    unsigned int value = 0;
 
     while (2 == fscanf(fp, "%x%x", &block_adr, &block_size))
     {
@@ -191,19 +218,21 @@ void run ()
 {
     pc = 01000;
 
-    word w;
+    word w = 0;
 
     while (1)
     {
         w = w_read (pc);
         printf ("%06o : %06o ", pc, w);
-        pc += 2;
+        pc += 2;                            // DEFINE
 
         for (int counter = 0; counter < sizeof (commands) / sizeof (struct Command); counter++)
         {
             if ((w & (commands [counter]).mask) == (commands [counter]).opcode)
             {
                 printf ("%s ", commands [counter].name);
+                dd = get_mr (w);
+                ss = get_mr (w >> 6);
                 (commands [counter]).func_ptr ();
             }
         }
@@ -215,18 +244,70 @@ void run ()
 void do_halt ()
 {
     printf ("THE END\n");
+    printf ("r0: %d r1: %d r2: %d r3: %d r4: %d r5: %d r6: %d r7: 0%o\n", reg [0], reg [1], reg [2], reg [3], reg [4], reg [5], reg [6], reg [7]);
+
     exit (0);
 }
 
 void do_nothing() {}
 
-void do_add() {}
+void do_add()
+{
+    w_write (dd.adr, ss.val + dd.val);
+}
 
-void do_mov() {}
+void do_mov()
+{
+    printf ("%d %d", dd.adr, ss.val);
+    w_write (dd.adr, ss.val);
+}
 
-void do_inc () {}
+void do_inc ()
+{
+    //w_write (ss.adr, ss.value + 1);
+}
 
 void do_sob () {}
+
+Arg get_mr (word w)
+{
+    Arg res = {0,0};
+
+    int r = w & 7;
+    int m = (w >> 3) & 7;
+
+    switch (m)
+    {
+        case 0:
+            res.adr = r;
+            res.val = reg [r];
+            break;
+        
+        case 1:
+            res.adr = reg [r];
+            res.val = w_read (res.adr);
+            break;
+
+        case 2:
+            res.adr = reg [r];
+            res.val = w_read (res.adr);
+            reg [r] += 2;
+            break;
+
+        
+        default:
+            printf ("this mode will be added\n");
+            break;
+    }
+
+    printf ("%d %d\n", r, m);
+
+    return res;
+
+
+}
+
+
 
 
 
