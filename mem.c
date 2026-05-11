@@ -19,26 +19,19 @@ word reg [8];
 void test_mem ();
 
 void b_write (address adr, byte val);
-
 byte b_read (address adr);
-
 word w_read (address adr);
-
 void w_write (address adr, word val);
 
 void load_data (char* file_name);
-
 void mem_dump(address adr, int size);
 
 void do_halt ();
-
 void do_add ();
-
 void do_mov ();
-
 void do_inc ();
-
 void do_sob ();
+void do_clear ();
 
 void run ();
 
@@ -56,7 +49,14 @@ Arg dd;
 
 Arg get_mr (word w);
 
+word nn;
+word regist;
 
+#define NO_ARGS 0
+#define HAS_SS 1
+#define HAS_DD (1 << 1)
+#define HAS_NN (1 << 2)
+#define HAS_R (1 << 3)
 
 struct Command
 {
@@ -64,14 +64,17 @@ struct Command
     unsigned short mask;
     const char* name;
     void (*func_ptr)(void);
-    
+    byte args;  // has ss, dd, xx, nn, etc    
 };
 
-struct Command commands [] =       {{0060000, 0170000, "ADD\n", do_add}, 
-                                    {0010000, 0170000, "MOV\n", do_mov},
-                                    {0000000, 0177777, "HALT\n", do_halt},
-                                    {0005200, 0177700, "INC\n", do_inc},
-                                    {0077000, 0177000, "SOB\n", do_sob}};
+struct Command commands [] =       {{0060000, 0170000, "ADD\n", do_add, HAS_SS | HAS_DD}, 
+                                    {0010000, 0170000, "MOV\n", do_mov, HAS_SS | HAS_DD},
+                                    {0000000, 0177777, "HALT\n", do_halt, NO_ARGS},
+                                    {0005200, 0177700, "INC\n", do_inc, HAS_DD},
+                                    {0077000, 0177000, "SOB\n", do_sob, HAS_R | HAS_NN},
+                                    {0005000,0177700, "CLEAR\n", do_clear, HAS_DD},
+                                    {0000000, 0000000, "unknown", do_halt, NO_ARGS} 
+                                };
 
 
 
@@ -228,12 +231,33 @@ void run ()
 
         for (int counter = 0; counter < sizeof (commands) / sizeof (struct Command); counter++)
         {
-            if ((w & (commands [counter]).mask) == (commands [counter]).opcode)
+            struct Command cmd = commands[counter];
+            if ((w & cmd.mask) == cmd.opcode)
             {
-                printf ("%s ", commands [counter].name);
-                dd = get_mr (w);
-                ss = get_mr (w >> 6);
-                (commands [counter]).func_ptr ();
+                printf ("%s ", cmd.name);
+                if (cmd.args & HAS_SS)
+                    ss = get_mr (w >> 6);
+                if (cmd.args & HAS_DD)
+                    dd = get_mr (w);
+                
+                if (cmd.args & HAS_R)
+                {
+                    regist = (w >> 6) & 07;
+                    printf ("r%d ", regist);
+                }
+
+                if (cmd.args & HAS_NN)
+                {
+                    nn = w & 077;
+                    printf ("0%o ", nn);
+                }
+                    
+
+               
+                
+                printf ("\n");
+                cmd.func_ptr ();
+                break;
             }
         }
         printf("\n");
@@ -244,7 +268,7 @@ void run ()
 void do_halt ()
 {
     printf ("THE END\n");
-    printf ("r0: %d r1: %d r2: %d r3: %d r4: %d r5: %d r6: %d r7: 0%o\n", reg [0], reg [1], reg [2], reg [3], reg [4], reg [5], reg [6], reg [7]);
+    printf ("r0: 0%o r1: 0%o r2: 0%o r3: 0%o r4: 0%o r5: 0%o r6: 0%o r7: 0%o\n", reg [0], reg [1], reg [2], reg [3], reg [4], reg [5], reg [6], reg [7]);
 
     exit (0);
 }
@@ -258,7 +282,7 @@ void do_add()
 
 void do_mov()
 {
-    printf ("%d %d", dd.adr, ss.val);
+    //printf ("%d %d", dd.adr, ss.val);
     w_write (dd.adr, ss.val);
 }
 
@@ -267,7 +291,17 @@ void do_inc ()
     //w_write (ss.adr, ss.value + 1);
 }
 
-void do_sob () {}
+void do_sob ()
+{
+    w_write (regist, reg [regist] - 1);
+    if (reg [regist] > 0)
+        pc = pc - 2 * nn; 
+}
+
+void do_clear ()
+{
+    w_write (dd.adr, 0);
+}
 
 Arg get_mr (word w)
 {
@@ -281,30 +315,67 @@ Arg get_mr (word w)
         case 0:
             res.adr = r;
             res.val = reg [r];
+            printf("r%d ", r);
             break;
         
         case 1:
             res.adr = reg [r];
             res.val = w_read (res.adr);
+            printf("(r%d) ", r);
             break;
 
         case 2:
             res.adr = reg [r];
             res.val = w_read (res.adr);
             reg [r] += 2;
+            if (r == 7)
+                printf("#%o ", res.val);
+            else
+                printf("(r%d)+ ", r);
             break;
 
-        
+        case 3:
+            res.adr = w_read (reg [r]);
+            res.val = w_read (res.adr);
+
+            w_write (res.adr, res.val + 1);
+            reg [r] += 2;
+
+
+            if (r == 7)
+                printf ("@#%o ", res.adr);
+            else
+                printf ("@(r%d)+ ", r);
+
+            break;
+
+        case 4:
+            reg [r] -= 2;
+
+            res.adr = reg [r];
+            res.val = w_read (res.adr);
+            printf("-(r%d) ", r);
+            break;
+
+        case 5:
+            reg [r] -= 2;
+
+            res.adr = w_read (reg [r]);
+            res.val = w_read (res.adr);
+
+            w_write (res.adr, res.val + 1);
+
+            printf ("@-(r%d) ", r);
+            break; 
+         
         default:
             printf ("this mode will be added\n");
             break;
     }
 
-    printf ("%d %d\n", r, m);
+    //printf ("%d %d\n", r, m);
 
     return res;
-
-
 }
 
 
