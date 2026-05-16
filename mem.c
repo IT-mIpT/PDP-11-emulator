@@ -51,12 +51,14 @@ Arg get_mr (word w);
 
 word nn;
 word regist;
+byte b;
 
 #define NO_ARGS 0
 #define HAS_SS 1
 #define HAS_DD (1 << 1)
 #define HAS_NN (1 << 2)
 #define HAS_R (1 << 3)
+#define HAS_B (1 << 4)
 
 struct Command
 {
@@ -67,12 +69,12 @@ struct Command
     byte args;  // has ss, dd, xx, nn, etc    
 };
 
-struct Command commands [] =       {{0060000, 0170000, "ADD\n", do_add, HAS_SS | HAS_DD}, 
-                                    {0010000, 0170000, "MOV\n", do_mov, HAS_SS | HAS_DD},
-                                    {0000000, 0177777, "HALT\n", do_halt, NO_ARGS},
-                                    {0005200, 0177700, "INC\n", do_inc, HAS_DD},
-                                    {0077000, 0177000, "SOB\n", do_sob, HAS_R | HAS_NN},
-                                    {0005000,0177700, "CLEAR\n", do_clear, HAS_DD},
+struct Command commands [] =       {{0060000, 0170000, "ADD", do_add, HAS_SS | HAS_DD}, 
+                                    {0010000, 0070000, "MOV", do_mov, HAS_SS | HAS_DD | HAS_B},
+                                    {0000000, 0177777, "HALT", do_halt, NO_ARGS},
+                                    {0005200, 0177700, "INC", do_inc, HAS_DD},
+                                    {0077000, 0177000, "SOB", do_sob, HAS_R | HAS_NN},
+                                    {0005000,0177700, "CLR", do_clear, HAS_DD},
                                     {0000000, 0000000, "unknown", do_halt, NO_ARGS} 
                                 };
 
@@ -234,7 +236,16 @@ void run ()
             struct Command cmd = commands[counter];
             if ((w & cmd.mask) == cmd.opcode)
             {
-                printf ("%s ", cmd.name);
+                if (cmd.args & HAS_B)
+                {
+                    b = (w >> 15) & 1;
+                }
+
+                if (b == 0)
+                    printf ("%s ", cmd.name);
+                else
+                    printf ("%sb ", cmd.name);
+
                 if (cmd.args & HAS_SS)
                     ss = get_mr (w >> 6);
                 if (cmd.args & HAS_DD)
@@ -249,18 +260,17 @@ void run ()
                 if (cmd.args & HAS_NN)
                 {
                     nn = w & 077;
-                    printf ("0%o ", nn);
+                    printf ("0%o ", pc - 2 * nn);
                 }
-                    
 
-               
-                
                 printf ("\n");
                 cmd.func_ptr ();
                 break;
             }
         }
         printf("\n");
+
+        b = 0;
         
     }
 }
@@ -282,8 +292,15 @@ void do_add()
 
 void do_mov()
 {
-    //printf ("%d %d", dd.adr, ss.val);
-    w_write (dd.adr, ss.val);
+    if (b == 0)
+        w_write (dd.adr, ss.val);
+
+    if (b == 1)
+        {
+            b_write (dd.adr, ss.val);
+            if (dd.adr < 8)
+                reg [dd.adr] = reg [dd.adr] & 0xFF;
+        }
 }
 
 void do_inc ()
@@ -314,20 +331,43 @@ Arg get_mr (word w)
     {
         case 0:
             res.adr = r;
-            res.val = reg [r];
+            if (b == 0)
+                res.val = reg [r];
+            if (b == 1)
+                res.val = reg [r] & 0xFF;
             printf("r%d ", r);
             break;
         
         case 1:
             res.adr = reg [r];
-            res.val = w_read (res.adr);
+
+            if (b == 0)
+                res.val = w_read (res.adr);
+
+            if (b == 1)
+                res.val = b_read (res.adr);
+            
             printf("(r%d) ", r);
             break;
 
         case 2:
             res.adr = reg [r];
-            res.val = w_read (res.adr);
-            reg [r] += 2;
+
+            if (b == 0)
+            {
+                res.val = w_read (res.adr);
+                reg [r] += 2;
+            }
+
+            if (b == 1)
+            {
+                res.val = b_read (res.adr);
+                if (r > -1 && r < 6)
+                    reg [r] += 1;
+                else
+                    reg [r] += 2;
+            }
+            
             if (r == 7)
                 printf("#%o ", res.val);
             else
@@ -350,7 +390,26 @@ Arg get_mr (word w)
             break;
 
         case 4:
-            reg [r] -= 2;
+            if (b == 0)
+                {
+                    reg [r] -= 2;
+                    res.adr = reg [r];
+                    res.val = w_read (res.adr);
+                }
+
+            if (b == 1 && (r > -1 && r < 6))
+                {
+                    reg [r] -= 1;
+                    res.adr = reg [r];
+                    res.val = b_read (res.adr);
+                }
+            else
+            {
+                reg [r] -= 2;
+                res.adr = reg [r];
+                res.val = b_read (res.adr);
+            }
+
 
             res.adr = reg [r];
             res.val = w_read (res.adr);
