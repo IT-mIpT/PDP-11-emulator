@@ -14,6 +14,21 @@ byte mem [MEMSIZE];
 
 word reg [8];
 
+byte NZVC;
+
+#define Z 2
+#define N 3
+#define C 0
+#define V 1
+
+void do_CLx (int x);
+void do_SEx (int x);
+void do_CCC ();
+void do_SCC ();
+
+void do_br ();
+void do_beq ();
+
 #define pc reg [7]
 
 void test_mem ();
@@ -52,6 +67,7 @@ Arg get_mr (word w);
 word nn;
 word regist;
 byte b;
+char xx;
 
 #define NO_ARGS 0
 #define HAS_SS 1
@@ -59,6 +75,7 @@ byte b;
 #define HAS_NN (1 << 2)
 #define HAS_R (1 << 3)
 #define HAS_B (1 << 4)
+#define HAS_XX (1 << 5)
 
 struct Command
 {
@@ -74,7 +91,11 @@ struct Command commands [] =       {{0060000, 0170000, "ADD", do_add, HAS_SS | H
                                     {0000000, 0177777, "HALT", do_halt, NO_ARGS},
                                     {0005200, 0177700, "INC", do_inc, HAS_DD},
                                     {0077000, 0177000, "SOB", do_sob, HAS_R | HAS_NN},
-                                    {0005000,0177700, "CLR", do_clear, HAS_DD},
+                                    {0005000, 0177700, "CLR", do_clear, HAS_DD},
+                                    {0000277, 0177777, "SCC", do_SCC, NO_ARGS},
+                                    {0000257, 0177777, "CCC", do_CCC, NO_ARGS},
+                                    {0000400, 0177400, "BR", do_br, HAS_XX},
+                                    {01400, 0177400, "BEQ", do_beq, HAS_XX},
                                     {0000000, 0000000, "unknown", do_halt, NO_ARGS} 
                                 };
 
@@ -82,7 +103,7 @@ struct Command commands [] =       {{0060000, 0170000, "ADD", do_add, HAS_SS | H
 
 int main()
 {
-    load_data("data_input.txt");
+    load_data("data_input_sob.txt");
     run ();
 }
 
@@ -263,6 +284,12 @@ void run ()
                     printf ("0%o ", pc - 2 * nn);
                 }
 
+                if (cmd.args & HAS_XX)
+                {
+                    xx = (char)((unsigned char)(w & (0xFF)));
+                    printf ("0%o", pc + 2 * xx);
+                }
+
                 printf ("\n");
                 cmd.func_ptr ();
                 break;
@@ -293,19 +320,44 @@ void do_add()
 void do_mov()
 {
     if (b == 0)
-        w_write (dd.adr, ss.val);
+        {
+            w_write (dd.adr, ss.val);
+
+            if (w_read (dd.adr) == 0)
+                do_SEx (Z);
+            else
+                do_CLx (Z);
+
+            if ((w_read (dd.adr) >> 15) & 1)
+                do_SEx (N);
+            else
+                do_CLx (N);
+        }
+
 
     if (b == 1)
         {
             b_write (dd.adr, ss.val);
             if (dd.adr < 8)
                 reg [dd.adr] = reg [dd.adr] & 0xFF;
+
+            if (b_read (dd.adr) == 0)
+                do_SEx (Z);
+            else
+                do_CLx (Z);
+
+            if ((b_read (dd.adr) >> 15) & 1)
+                do_SEx (N);
+            else
+                do_CLx (N);
         }
+
+    
 }
 
 void do_inc ()
 {
-    //w_write (ss.adr, ss.value + 1);
+    w_write (ss.adr, ss.val + 1);
 }
 
 void do_sob ()
@@ -437,6 +489,36 @@ Arg get_mr (word w)
     return res;
 }
 
+void do_CLx (int x)
+{
+    NZVC = NZVC & (0xF - (1 << x));
+}
+
+void do_SEx (int x)
+{
+    NZVC = NZVC | (1 << x);
+}
+
+void do_CCC ()
+{
+    NZVC = 0;
+}
+
+void do_SCC ()
+{
+    NZVC = 0xF;
+}
+
+void do_br ()
+{
+    pc = pc + xx * 2;
+}
+
+void do_beq ()
+{
+    if (NZVC & (1 << Z))
+        do_br ();
+}
 
 
 
