@@ -9,6 +9,8 @@ typedef unsigned short word;
 typedef unsigned short address;
 
 #define MEMSIZE (64 * 1024)
+#define ostat 0177564
+#define odata 0177566
 
 byte mem [MEMSIZE];
 
@@ -28,6 +30,9 @@ void do_SCC ();
 
 void do_br ();
 void do_beq ();
+void do_bpl ();
+void do_tst ();
+//void do_tst ();
 
 #define pc reg [7]
 
@@ -48,8 +53,9 @@ void do_inc ();
 void do_sob ();
 void do_clear ();
 
-void run ();
 
+void run ();
+void output ();
 
 struct Argument
 {
@@ -96,6 +102,8 @@ struct Command commands [] =       {{0060000, 0170000, "ADD", do_add, HAS_SS | H
                                     {0000257, 0177777, "CCC", do_CCC, NO_ARGS},
                                     {0000400, 0177400, "BR", do_br, HAS_XX},
                                     {01400, 0177400, "BEQ", do_beq, HAS_XX},
+                                    {0005700, 0077700,"TST", do_tst, HAS_DD | HAS_B},
+                                    {0, 0, "BPL", do_bpl, HAS_XX},
                                     {0000000, 0000000, "unknown", do_halt, NO_ARGS} 
                                 };
 
@@ -103,6 +111,7 @@ struct Command commands [] =       {{0060000, 0170000, "ADD", do_add, HAS_SS | H
 
 int main()
 {
+    b_write (ostat, 0xFF);
     load_data("data_input_sob.txt");
     run ();
 }
@@ -115,6 +124,8 @@ void b_write (address adr, byte val)
         reg [adr] = val;
         return;
     }
+    if (adr == odata)
+        fprintf(stderr, "%c", val);
     mem [adr] = val;
 }
 
@@ -298,6 +309,7 @@ void run ()
         printf("\n");
 
         b = 0;
+        //output ();
         
     }
 }
@@ -520,12 +532,33 @@ void do_beq ()
         do_br ();
 }
 
+void do_bpl ()
+{
+    if (!(NZVC & (1 << N)))
+        do_br ();
+}
 
+void do_tst ()
+{
+    byte t_byte = 0;
 
+    if (b == 1)
+    {
+        t_byte = b_read (dd.adr);
+       
+        do_CLx (C);
+        do_CLx (V);
 
+        if (t_byte == 0)
+            do_SEx (Z);
+        else
+            do_CLx (Z);
 
-
-
-
+        if ((t_byte >> 7) == 1)
+            do_SEx (N);
+        else
+            do_CLx (N);
+    }
+}
 
 
